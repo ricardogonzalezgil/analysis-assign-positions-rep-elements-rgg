@@ -1,5 +1,10 @@
 ## **Summary of the exercise: assigning positions in blocks of repeated elements in a vector**
 
+For the full interactive exercise, visit:  
+[🔗 Main Web Exercise](https://ricardogonzalezgil.github.io/analysis-assign-positions-rep-elements-rgg/)  
+
+---
+
 This exercise explores **four different methods** for assigning positions within consecutive, repeated elements in a vector. The goal is to efficiently label sequences of a target value while keeping other values unchanged.
 
 For example, having a vector like:
@@ -30,6 +35,12 @@ For a diverse range of cases and applications, I developed **generalized functio
 - The **rle** method is the fastest, consistently outperforming the other approaches.
 - The **general** and **loop** methods show similar performance, with **general** slightly faster.
 - The **dplyr** method is the slowest, especially for long vectors, likely due to `mutate()` and `ave()` overhead.
+
+### **Performance Comparison of Methods**  
+
+![Fig. 1: Performance comparison of methods](https://github.com/ricardogonzalezgil/analysis-assign-positions-rep-elements-rgg/blob/main/docs/index_files/figure-html/methods_comparison_fig1-1.png)  
+
+![Fig. 2: Performance comparison for each vector length](https://github.com/ricardogonzalezgil/analysis-assign-positions-rep-elements-rgg/blob/main/docs/index_files/figure-html/methods_comparison_fig2-1.png)  
 
 ### **Key takeaways**
 
