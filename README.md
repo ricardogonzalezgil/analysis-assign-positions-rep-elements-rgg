@@ -1,4 +1,4 @@
-## **Summary of the exercise: assigning positions in blocks of repeated elements in a vector**
+## **Summary of "Assigning positions in blocks of repeated elements in a vector: a performance comparison in R**
 
 For the full interactive exercise, visit:  
 [🔗 Main Web Exercise](https://ricardogonzalezgil.github.io/analysis-assign-positions-rep-elements-rgg/)  
@@ -36,9 +36,9 @@ For a diverse range of cases and applications, I developed **generalized functio
 - The **general** and **loop** methods show similar performance, with **general** slightly faster.
 - The **dplyr** method is the slowest, especially for long vectors, likely due to `mutate()` and `ave()` overhead.
 
-### **Performance Comparison of Methods**  
+### **Performance comparison of methods**  
 
-![Fig. 1: Performance comparison of methods](https://github.com/ricardogonzalezgil/analysis-assign-positions-rep-elements-rgg/blob/main/docs/index_files/figure-html/methods_comparison_fig1-1.png)  
+<img src="https://github.com/ricardogonzalezgil/analysis-assign-positions-rep-elements-rgg/blob/main/docs/index_files/figure-html/methods_comparison_fig1-1.png" style="width: 600px; height: auto;">
 
 ![Fig. 2: Performance comparison for each vector length](https://github.com/ricardogonzalezgil/analysis-assign-positions-rep-elements-rgg/blob/main/docs/index_files/figure-html/methods_comparison_fig2-1.png)  
 
