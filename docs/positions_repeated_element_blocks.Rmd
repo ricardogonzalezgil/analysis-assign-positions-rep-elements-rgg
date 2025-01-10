@@ -1,0 +1,549 @@
+---
+title: 'Assigning positions in blocks of repeated elements in a vector: a performance
+  comparison in R'
+author: "Ricardo González-Gil"
+date: "2024-12-13"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    toc_float: true
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(microbenchmark)
+library(scales)
+```
+## Introduction
+
+In many data manipulation tasks, it is often necessary to identify and label groups of consecutive, repeating elements within a vector. This need arises in a variety of applications, such as time series analysis, genomic sequence processing, and text data manipulation. Efficiently assigning positions to repeated values enables structured analysis and simplifies further computations.
+
+For instance, given the following vector:
+
+```{r example_vector}
+x <- c(rep(0, 3), rep(1, 4), rep(0, 2), rep(1, 2), rep(0, 3), rep(1, 4), rep(0, 5))
+
+print(x)
+```
+
+Our goal is to assign consecutive positions to blocks of "1s" while keeping 0s unchanged, resulting in:
+
+**0 0 0 1 2 3 4 0 0 1 2 0 0 0 1 2 3 4 0 0 0 0 0**
+
+This exercise explores multiple approaches to solving this problem and compares their efficiency in handling large vectors.
+
+## My approach
+
+The solution revolves around:
+
+1) Calculating a cumulative sum (cumsum) of the vector.
+2) Isolating cumulative sums at positions corresponding to zeros (x != 1).
+3) Interpolating these values to propagate them across zeros.
+4) Subtracting the interpolated values from the original cumulative sum to derive the desired indices.
+
+### Cumulative sum
+
+```{r my_approach_cumsum}
+cumsum_x <- cumsum(x)
+
+print(cumsum_x)
+```
+This first step allows to assign consecutive positions to the "1s" when there is a block of them.
+
+The mission after this simple first step is:
+
+1) Keep as "0" where there is one.
+2) Reset the count after each block of zeros
+
+### Filter cumulative sums for zero groups
+
+For the first goal, we can create a vector that assigns to the each blocks of "0s", the cumulative sum until the position of the block:
+
+```{r my_approach_zero_groups}
+cums_for_0 <- cumsum_x * (x != 1)
+
+print(cums_for_0)
+```
+
+Subtracting these two cumulative sums, we get:
+
+```{r my_approach_substraction_cumsums}
+cumsum_x - cums_for_0
+```
+
+This is closer to the desired solution. Now we just have to reset the count for each block of "1s" as previously indicated. For this, we're going to use the interpolation function approx:
+
+### Interpolate values across zeros
+
+```{r my_approach_interpolation}
+interpolated <- approx(
+  x = which(cums_for_0 != 0),
+  y = cums_for_0[which(cums_for_0 != 0)],
+  xout = 1:length(cumsum_x),
+  method = "constant",
+  yleft = 0,
+  rule = 2
+)$y
+
+print(interpolated)
+```
+
+Finally, let's substract both vectors:
+
+### Calculate positional indices
+
+```{r my_approach_substraction_final}
+result <- cumsum_x - interpolated
+
+print(result)
+```
+
+All steps combined:
+
+```{r my_approach_all_combined}
+result <- cumsum(x) - approx(
+  x = which(cumsum(x) * (x != 1) != 0),
+  y = (cumsum(x) * (x != 1))[which(cumsum(x) * (x != 1) != 0)],
+  xout = 1:length(cumsum(x)),
+  method = "constant",
+  yleft = 0,
+  rule = 2
+)$y
+
+print(result)
+```
+
+### Generalization of my solution
+
+What if the "target element" being repeated isn't 1, or the "in-between element" or "separator" isn't 0? What if the elements are letters, words, or other types of values? And what if the separators are not just a single value, but multiple values, such as "A", "B", and "C"?
+
+To address these scenarios, we can generalize the solution by creating a function that handles various data types, allowing you to specify the target element while treating all other elements as separators. This approach eliminates the need to explicitly define the separators, making the function robust even when there are multiple types of separators or other intervening elements. Additionally, the function provides flexibility to replace all non-target elements with a custom value if needed. Here's how the generalized function works:
+
+```{r my_approach_function_gnrl}
+assign_positions_general <- function(x, target, separator_value = 0) {
+  # Convert to numeric mask for generality
+  target_mask <- as.numeric(x == target)
+  separator_mask <- as.numeric(x != target)
+  
+  # Cumulative sum calculation for the numeric mask
+  cumsum_x <- cumsum(target_mask)
+  
+  # Isolate cumulative sums at positions where the separator is not present
+  cums_no_separator <- cumsum_x * separator_mask
+  
+  # Interpolation: Add condition to handle empty cases
+  if (all(cums_no_separator == 0)) {
+    interpolated <- rep(0, length(cumsum_x))  # Default to all zeros
+  } else {
+    interpolated <- approx(
+      x = which(cums_no_separator != 0), 
+      y = cums_no_separator[which(cums_no_separator != 0)], 
+      xout = seq_along(cumsum_x), 
+      method = "constant", 
+      yleft = 0, 
+      rule = 2
+    )$y
+  }
+  
+  # Calculate the result by subtracting interpolated values
+  result <- cumsum_x - interpolated
+  
+  # Assign the separator value to elements that are not part of the target group
+  result[!target_mask] <- separator_value
+  
+  return(result)
+}
+```
+
+### Example test cases
+
+#### Numeric data (single separator)
+
+```{r my_approach_test_num}
+x_num <- c(0, 0, 1, 1, 1, 0, 0, 1, 1, 0)
+assign_positions_general(x_num, target = 1)
+```
+#### Letters as data (single separator)
+
+```{r my_approach_test_lett}
+x_abc <- c("A", "A", "B", "B", "A", "A", "B", "B", "B", "A")
+assign_positions_general(x_abc, target = "B")
+```
+#### Words as data (single separator)
+
+```{r my_approach_test_words}
+x_words <- c("apple", "apple", "banana", "banana", "apple", "apple", "banana", "banana", "banana")
+assign_positions_general(x_words, target = "banana")
+```
+#### Numeric data with custom separator value
+
+```{r my_approach_test_num_custom_sept}
+x_num2 <- c(0, 0, 1, 1, 1, 0, 0, 1, 1, 0)
+assign_positions_general(x_num2, target = 1, separator_value = -1)
+```
+#### Multiple separator types
+
+```{r my_approach_test_multiple_sept}
+x_abc_mult <- c("A", "A", "T", "C", "G", "G", "G", "A", "T", "G", "G")
+assign_positions_general(x_abc_mult, target = "G")
+```
+#### Mixed data types
+
+```{r my_approach_test_mix_data_tp}
+x_mix <- c(0, "A", 0, "B", 0, "B", "B", 0, "A", 1, 0)
+assign_positions_general(x_mix, target = "B")
+```
+
+## Alternative solutions
+
+Let's explore now other potential solutions:
+
+### rle (Run Length Encoding):
+
+```{r rle_method}
+rle_x <- rle(x)
+
+indices_rle <- unlist(lapply(rle_x$lengths, seq_len)) * rep(rle_x$values == 1, rle_x$lengths)  # Generate positions for target values and set others to 0
+
+print(indices_rle)
+```
+
+### mutate and dplyr
+
+```{r dplyr_method}
+indices_dplyr <- data.frame(x = x) |>
+  mutate(
+    group = if_else(
+      x == 1,
+      ave(x, cumsum(x == 0), FUN = function(y) seq_along(y) - 1), # Assign positions for groups
+      0 # Replace non-target values
+    )
+  )
+
+print(indices_dplyr$group)
+```
+### Loop
+
+```{r loop_method}
+indices_loop <- numeric(length(x)) # Initialize result vector
+counter <- 0 # Initialize position counter
+
+for (i in seq_along(x)) {
+  if (i > 1 && x[i] != x[i - 1]) counter <- 0 # Reset counter for separators
+  if (x[i] == 1) counter <- counter + 1 # Increment for target values
+  indices_loop[i] <- if (x[i] == 1) counter else 0 # Assign positions
+}
+
+print(indices_loop)
+```
+
+### Testing the alternative methods
+
+Now, let's create generalized functions:
+
+```{r altern_function_gnrl}
+# rle solution
+assign_positions_rle <- function(x, target, separator_value = 0) {
+  rle_x <- rle(x) # Run-length encoding
+  indices <- unlist(
+    lapply(rle_x$lengths, seq_len) # Generate sequence positions within each run
+  ) * rep(rle_x$values == target, rle_x$lengths) # Mask for target values
+
+  indices[indices == 0] <- separator_value # Replace non-target values
+  return(indices)
+}
+
+# dplyr solution
+assign_positions_dplyr <- function(x, target, separator_value = 0) {
+  # Handle the edge case when all elements are the target
+  if (all(x == target)) {
+    return(seq_along(x))
+  }
+  # Otherwise, apply sequential numbering within target groups
+  data.frame(x = x) |>
+    mutate(
+      group = if_else(
+        x == target,
+        as.numeric(ave(x, cumsum(x != target), FUN = function(y) seq_along(y) - 1)),
+        as.numeric(separator_value) # Replace non-target elements
+      )
+    ) |>
+    pull(group) # Extract the vector output
+}
+
+# loop solution
+assign_positions_loop <- function(x, target, separator_value = 0) {
+  indices <- numeric(length(x)) # Initialize result vector
+  counter <- 0 # Initialize position counter
+
+  for (i in seq_along(x)) {
+    if (i > 1 && x[i] != target) counter <- 0 # Reset counter at non-targets
+    if (x[i] == target) counter <- counter + 1
+    indices[i] <- if (x[i] == target) counter else separator_value
+  }
+  return(indices)
+}
+```
+
+Testing these functions:
+
+```{r altern_function_gnrl_test, cache = TRUE}
+# Test cases
+test_cases <- list(
+  x_num = list(
+    vec = x_num, 
+    target = 1
+  ),
+  x_abc = list(
+    vec = x_abc, 
+    target = "B"
+  ),
+  x_words = list(
+    vec = x_words, 
+    target = "banana"
+  ),
+  x_num2 = list(
+    vec = x_num2, 
+    target = 1, 
+    separator_value = -1
+  ),
+  x_abc_mult = list(
+    vec = x_abc_mult, 
+    target = "G"
+  ),
+  x_mix = list(
+    vec = x_mix, 
+    target = "B"
+  )
+)
+
+# Helper function to run a method and collapse the result
+run_method <- function(fun, vec, target, separator_value) {
+  result <- fun(vec, target, separator_value)
+  paste(result, collapse = " ")
+}
+
+# Replace map_dfr() with map() + list_rbind()
+results_comparison <- map(names(test_cases), \(name) {
+  tc <- test_cases[[name]]  # Extract test case
+  separator_value <- ifelse("separator_value" %in% names(tc), tc$separator_value, 0)
+  
+  # List of methods to apply
+  methods <- list(
+    rle = assign_positions_rle,
+    dplyr = assign_positions_dplyr,
+    loop = assign_positions_loop
+  )
+  
+  # Generate results for all methods
+  map(names(methods), \(method_name) {
+    tibble(
+      test_case = name,
+      method = method_name,
+      result = run_method(methods[[method_name]], tc$vec, tc$target, separator_value)
+    )
+  }) |> list_rbind()  # Combine results for all methods into a single data frame
+}) |> list_rbind()  # Combine results for all test cases
+
+# Reference Expected Outputs
+expected_outputs <- tibble(
+  test_case = c(unique(results_comparison$test_case)),
+  expected_outputs = c(
+    "0 0 1 2 3 0 0 1 2 0",
+    "0 0 1 2 0 0 1 2 3 0",
+    "0 0 1 2 0 0 1 2 3",
+    "-1 -1 1 2 3 -1 -1 1 2 -1",
+    "0 0 0 0 1 2 3 0 0 1 2",
+    "0 0 0 1 0 1 2 0 0 0 0"
+  )
+)
+
+# Pivot the results_comparison table to wide format and checking whether
+# all methods give the expected result
+results_wide <-
+  results_comparison |>
+  pivot_wider(
+    id_cols = test_case,
+    names_from = method,
+    values_from = result
+  ) |>
+  left_join(expected_outputs, by = "test_case") |>
+  rowwise() |> # Perform row-wise operations
+  mutate(
+    all_methods_work = if_else(
+      all(c_across(c(rle, dplyr, loop)) == expected_outputs),
+      "Yes",
+      "No"
+    )
+  ) |>
+  ungroup() |> # Ungroup after row-wise operation
+  select(test_case, expected_outputs, all_methods_work)
+
+# Print results
+print(results_wide)
+```
+
+## Benchmarking
+
+In this section, we compare the execution speed of the different approaches.
+
+To ensure reproducibility, we generate test vectors with controlled sequences of "0s" and "1s":
+
+```{r test_vect_generation, cache = T}
+set.seed(123) # Set seed for reproducibility
+
+# Optimized function to generate intercalated sequences of 0s and 1s with exact lengths
+generate_test_vector <- function(total_length) {
+  # Generate random lengths
+  lengths_val <- sample(1:25, size = total_length, replace = TRUE)
+
+  # Calculate cumulative sum to determine valid lengths
+  cumulative_lengths <- cumsum(lengths_val)
+  lengths_val <- lengths_val[cumulative_lengths <= total_length]
+
+  # Adjust the last length to ensure exact total length
+  lengths_val[length(lengths_val)] <-
+    total_length - sum(lengths_val[-length(lengths_val)])
+
+  # Alternate between 0 and 1
+  values <- rep(c(0, 1), length.out = length(lengths_val))
+
+  # Generate the final intercalated sequence
+  map2(values, lengths_val, rep) |> list_c()
+}
+
+# Generate test vectors with exact lengths
+vector_lengths <- c(1e3, 1e4, 1e5, 1e6) # Define vector lengths
+test_vectors <- map(vector_lengths, generate_test_vector)
+
+# Set names for the test vectors based on their lengths
+names(test_vectors) <- as.character(vector_lengths)
+
+# Check the generated test vectors
+str(test_vectors)
+```
+We use the `microbenchmark` package to evaluate execution time for each method:
+
+```{r methods_comp_benchmark, cache = T}
+benchmark_assign_positions <- function(test_vectors, target = 1) {
+  # Benchmark for each vector size
+  map_dfr(
+    names(test_vectors), # Iterate over the names of the test vectors
+    \(name) {
+      vector <- test_vectors[[name]] # Extract the test vector
+      microbenchmark(
+        rle = assign_positions_rle(vector, target),
+        dplyr = assign_positions_dplyr(vector, target),
+        loop = assign_positions_loop(vector, target),
+        general = assign_positions_general(vector, target),
+        times = 40 # Number of repetitions
+      ) |>
+        as_tibble() |>
+        mutate(vector_length = as.numeric(name)) # Add vector length as a column
+    }
+  )
+}
+
+# Run benchmarking
+benchmark_results <- 
+  benchmark_assign_positions(test_vectors, target = 1) |>
+  rename(method = expr) |> 
+  arrange(method, vector_length) |> 
+  relocate(vector_length, .before = time)
+```
+
+We can now visually inspect the performance of the 4 methods:
+
+```{r, methods_comparison_fig1, fig.width = 5, fig.height = 4}
+# Showing the results
+# Color palette for color blindness 
+colorBlindBlack8  <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+# The plot
+benchmark_results |> 
+  group_by(method, vector_length) |> 
+  summarise(med_t = median(time) / 1e6, .groups = "drop") |> 
+  ggplot(aes(vector_length, med_t, color = method)) +
+  geom_line() +
+  geom_point(size = 2) +
+  scale_x_log10(
+    label = trans_format("log10", math_format(10^.x))
+  ) +
+  scale_color_manual(values = colorBlindBlack8[1:4]) +
+  labs(
+    x = "Vector length",
+    y = "Median execution time (ms)",
+    title = "Fig. 1. Performance comparison of methods",
+    color = "Method"
+  ) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 14),
+    title = element_text(size = 12)
+  )  
+```
+
+```{r, methods_comparison_fig2, fig.width = 12, fig.height = 3}
+benchmark_results |> 
+  group_by(method, vector_length) |>
+  # mutate(vector_length_lab = paste())
+  ggplot(aes(x = method, y = time  / 1e6, color = method)) +  
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) +  
+  geom_jitter(width = 0.2, alpha = 0.6, size = 1.5) +  
+  scale_color_manual(values = colorBlindBlack8[1:4], guide = "none") +
+  facet_wrap(
+    ~ vector_length, 
+    nrow = 1, 
+    scales = "free",
+    labeller = as_labeller(
+      ~ paste0("10^", log10(as.numeric(.))), 
+      default = label_parsed
+    )
+  ) +  
+  labs(
+    x = "Method",
+    y = "Execution time (ms)",
+    title = "Fig. 2. Performance comparison for each vector length"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    text = element_text(size = 14),
+    title = element_text(size = 15)
+  )  
+```
+
+## Results and discussion:
+
+The performance comparison, shown in Figs. 1 and 2, highlights the efficiency differences between the four methods.
+
+### Key observations:
+
+- The **rle** method consistently outperforms the others, demonstrating its efficiency in processing repeated sequences.
+- The **general** and **loop** methods show comparable performance, with **general** surpassing **loop** for larger vectors.
+- The **dplyr** approach is the slowest, particularly for long vectors, likely due to the overhead introduced by `mutate()` and `ave()` operations. Variations of this method could potentially improve its performance.
+
+The table below summarizes the advantages and disadvantages of each method:
+
+| Method  | Advantages | Disadvantages |
+|---------|------------|--------------|
+| **rle**  | Fastest method, leverages R's built-in `rle()` for efficient computation | Less intuitive for some users |
+| **general** | Well-structured approach, leverages cumulative sum and interpolation | Slower than **rle**, especially for large inputs |
+| **loop**  | Simple logic and easy to understand | Slightly slower than **general** |
+| **dplyr** | Readable, integrates well into `tidyverse` workflows | Slowest method, performance drops for large vectors |
+
+## Conclusions
+
+This exercise examined four different solutions for assigning positions within repeated element blocks, demonstrating that multiple valid approaches exist, each with distinct trade-offs.
+
+The **rle-based** solution is the most efficient, making it the recommended choice when performance is critical. However, the selection of a method ultimately depends on the specific problem context—whether prioritizing speed, interpretability, or adaptability. Additionally, variations of these methods or entirely different implementations not explored in this analysis may offer further optimizations.
+
+These findings emphasize the importance of benchmarking before selecting a method for large-scale data processing tasks, ensuring that the chosen approach aligns with the goals and constraints of the analysis.
+
+## Acknowledgements
+
+I would like to thank Fernando González Taboada and Paula Izquierdo for their valuable insights and inspiration in this exercise.
