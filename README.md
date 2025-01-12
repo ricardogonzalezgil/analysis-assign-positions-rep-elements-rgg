@@ -48,3 +48,7 @@ For a diverse range of cases and applications, I developed **generalized functio
 - **Benchmarking is essential** when selecting methods for large-scale data processing.
 - There may be other variations or entirely different implementations not covered in this analysis that could further optimize performance.
 
+### **Acknowledgements**
+
+I would like to thank Fernando González Taboada and Paula Izquierdo for their valuable insights and inspiration in this exercise.
+
