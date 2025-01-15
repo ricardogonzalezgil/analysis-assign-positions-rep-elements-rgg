@@ -1,4 +1,4 @@
-## **Summary of "Assigning positions in blocks of repeated elements in a vector: a performance comparison in R**
+## **Summary of "Assigning positions in blocks of repeated elements in a vector: a performance comparison in R"**
 
 For the full exercise with code, visit this [🔗 link](https://ricardogonzalezgil.github.io/analysis-assign-positions-rep-elements-rgg/)  
 
